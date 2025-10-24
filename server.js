@@ -68,7 +68,7 @@ io.on('connection', (socket) => {
     rooms[roomId] = {
       hostId: socket.id,
       guests: [],
-      currentVideoId: 'jfKfPfyJRdk',
+      currentVideoId: 'iwncGYFPxmU',
       playbackState: 'PAUSED',
       lastSeekTime: 0,
       queue: [],
