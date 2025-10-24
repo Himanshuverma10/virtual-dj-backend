@@ -168,6 +168,54 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- Queue (Cooldown + Voting) ---
+    socket.on('suggest-track', ({ roomId, videoId, title }, callback) => {
+      console.log(`[Backend] Received suggest-track for room ${roomId}, video ${videoId}`); // <-- DEBUG LOG
+
+      if (!rooms[roomId]) {
+        return callback({ success: false, message: 'Room not found.' });
+      }
+
+      // Check if track is already in queue
+      if (rooms[roomId].queue.find(v => v.id === videoId)) {
+        return callback({ success: false, message: 'Track is already in the queue.' });
+      }
+
+      const totalUsers = rooms[roomId].guests.length + 1;
+      let cooldownActive = false;
+
+      if (totalUsers >= 5) {
+          const COOLDOWN_MS = 60000;
+          const now = Date.now();
+
+          if (now - rooms[roomId].lastSuggestionTime < COOLDOWN_MS) {
+            const timeLeft = Math.ceil((COOLDOWN_MS - (now - rooms[roomId].lastSuggestionTime)) / 1000);
+            return callback({ success: false, message: `Please wait ${timeLeft} seconds.` });
+          }
+          cooldownActive = true; 
+      }
+
+      const suggestion = { 
+        id: videoId, 
+        title: title || videoId,
+        suggestedBy: rooms[roomId].guests.find(g => g.id === socket.id)?.username || 'Host',
+        votes: new Set(), // Initialize votes Set
+      };
+
+      rooms[roomId].queue.push(suggestion);
+      rooms[roomId].lastSuggestionTime = Date.now(); 
+
+      // Send queue with vote counts
+      const queueWithVoteCounts = rooms[roomId].queue.map(item => ({
+        ...item,
+        // Make sure item.votes exists before accessing size
+        votes: item.votes ? item.votes.size : 0, 
+      }));
+
+      io.to(roomId).emit('update-queue', queueWithVoteCounts);
+      callback({ success: true, cooldownActive: cooldownActive });
+    });
+
   // ... (All other events like 'host-change-video', 'suggest-track', etc. are UNCHANGED) ...
 
   // --- Disconnect (Unchanged) ---
