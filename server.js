@@ -10,9 +10,12 @@ import 'dotenv/config';
 // --- NEW FIREBASE ADMIN IMPORTS ---
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import serviceAccount from './serviceAccountKey.json' with { type: "json" };
+// import serviceAccount from './serviceAccountKey.json' ... <-- YEH LINE DELETE KAR DI
 
 // --- NEW FIREBASE ADMIN INIT ---
+// Render ke environment variable se key ko padho
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
 initializeApp({
   credential: cert(serviceAccount)
 });
