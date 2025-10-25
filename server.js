@@ -109,7 +109,7 @@ io.on('connection', (socket) => {
     // Convert Set to vote counts
     const queueWithVoteCounts = rooms[roomId].queue.map(item => ({
       ...item,
-      votes: item.votes.size,
+      votes: item.votes ? item.votes.size : 0, // <-- Safety check add kiya
     }));
 
     socket.emit('room-state', {
@@ -141,6 +141,34 @@ io.on('connection', (socket) => {
       socket.to(roomId).emit('sync-playback', { type, time });
     }
   });
+  // --- YEH MISSING THA ---
+    socket.on('host-change-video', ({ roomId, videoId }) => {
+      console.log(`[Backend] Received host-change-video for room ${roomId}, video ${videoId}`); // <-- DEBUG LOG ADDED
+      if (rooms[roomId] && rooms[roomId].hostId === socket.id) {
+          console.log(`[Backend] Host is changing video to ${videoId}`); // <-- DEBUG LOG ADDED
+          rooms[roomId].currentVideoId = videoId;
+          rooms[roomId].playbackState = 'PLAYING';
+          rooms[roomId].lastSeekTime = 0;
+
+          // Remove from queue
+          rooms[roomId].queue = rooms[roomId].queue.filter(v => v.id !== videoId);
+
+          // Convert Set to vote counts before sending
+          const queueWithVoteCounts = rooms[roomId].queue.map(item => ({
+            ...item,
+            votes: item.votes ? item.votes.size : 0, // Safety check
+          }));
+
+          console.log(`[Backend] Emitting set-video after host change`); // <-- DEBUG LOG ADDED
+          io.to(roomId).emit('set-video', { 
+              videoId, 
+              queue: queueWithVoteCounts // Send updated queue
+          });
+      } else {
+        console.log(`[Backend] host-change-video rejected (not host or room invalid)`); // <-- DEBUG LOG ADDED
+      }
+    });
+// --- END MISSING CODE ---
 
   // ... (host-change-video, suggest-track, vote-track, play-top-voted are all UNCHANGED) ...
   // ... (They still use the in-memory `rooms` object for the queue) ...
@@ -204,7 +232,7 @@ io.on('connection', (socket) => {
       const suggestion = { 
         id: videoId, 
         title: title || videoId,
-        suggestedBy: rooms[roomId].guests.find(g => g.id === socket.id)?.username || 'Host',
+        suggestedBy: socket.id === rooms[roomId].hostId ? 'Host' : rooms[roomId].guests.find(g => g.id === socket.id)?.username || 'Guest',
         votes: new Set(), // Initialize votes Set
       };
 
