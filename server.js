@@ -183,16 +183,22 @@ io.on('connection', (socket) => {
 
       const totalUsers = rooms[roomId].guests.length + 1;
       let cooldownActive = false;
+      console.log(`[Backend] Total users in room ${roomId}: ${totalUsers}`);
 
       if (totalUsers >= 5) {
+        console.log(`[Backend] Cooldown check needed (>= 5 users)`);
           const COOLDOWN_MS = 60000;
           const now = Date.now();
 
           if (now - rooms[roomId].lastSuggestionTime < COOLDOWN_MS) {
             const timeLeft = Math.ceil((COOLDOWN_MS - (now - rooms[roomId].lastSuggestionTime)) / 1000);
+            console.log(`[Backend] Cooldown active! Wait ${timeLeft}s.`);
             return callback({ success: false, message: `Please wait ${timeLeft} seconds.` });
           }
+          console.log(`[Backend] Cooldown passed. Allowing suggestion.`);
           cooldownActive = true; 
+      }else {
+      console.log(`[Backend] Cooldown skipped (< 5 users)`); // <-- ADD THIS
       }
 
       const suggestion = { 
@@ -212,8 +218,96 @@ io.on('connection', (socket) => {
         votes: item.votes ? item.votes.size : 0, 
       }));
 
+      console.log(`[Backend] Emitting update-queue. Cooldown active: ${cooldownActive}`);
       io.to(roomId).emit('update-queue', queueWithVoteCounts);
       callback({ success: true, cooldownActive: cooldownActive });
+    });
+
+    // --- ADD NEW EVENT FOR VOTING ---
+    socket.on('vote-track', ({ roomId, videoId }) => {
+      console.log(`[Backend] Received vote-track for room ${roomId}, video ${videoId}`); // <-- DEBUG LOG
+      if (!rooms[roomId]) return;
+      
+      const track = rooms[roomId].queue.find(item => item.id === videoId);
+      if (track) {
+        // Ensure 'votes' Set exists, create if not (safety check)
+        if (!track.votes) {
+            track.votes = new Set();
+        }
+          
+        const userId = socket.id;
+        const hadVote = track.votes.has(userId); // Check before changing
+        
+        if (hadVote) {
+          track.votes.delete(userId);
+          console.log(`[Backend] User ${userId} removed vote.`); // <-- DEBUG LOG
+        } else {
+          track.votes.add(userId);
+          console.log(`[Backend] User ${userId} added vote.`); // <-- DEBUG LOG
+        }
+        
+        const newVoteCount = track.votes.size;
+        console.log(`[Backend] New vote count for ${videoId}: ${newVoteCount}`); // <-- DEBUG LOG
+        
+        // Send the updated queue with new vote counts
+        const queueWithVoteCounts = rooms[roomId].queue.map(item => ({
+          ...item,
+          votes: item.votes ? item.votes.size : 0, // Safety check for votes Set
+        }));
+        
+        console.log(`[Backend] Emitting update-queue after vote.`); // <-- DEBUG LOG
+        io.to(roomId).emit('update-queue', queueWithVoteCounts);
+      } else {
+        console.log(`[Backend] Vote failed: Track ${videoId} not found in queue.`); // <-- DEBUG LOG
+      }
+    });
+
+    // --- ADD NEW EVENT FOR HOST TO PLAY TOP VOTED ---
+    socket.on('play-top-voted', ({ roomId }) => {
+      console.log(`[Backend] Received play-top-voted for room ${roomId} from host ${socket.id}`); // <-- DEBUG LOG
+      if (!rooms[roomId] || rooms[roomId].hostId !== socket.id) {
+          console.log(`[Backend] Play top voted rejected (not host or room not found).`); // <-- DEBUG LOG
+          return; 
+      }
+      
+      const queue = rooms[roomId].queue;
+      if (queue.length === 0) {
+          console.log(`[Backend] Play top voted rejected (queue empty).`); // <-- DEBUG LOG
+          return;
+      }
+
+      // Ensure 'votes' Set exists on tracks before sorting (safety check)
+      queue.forEach(track => {
+        if (!track.votes) {
+          track.votes = new Set();
+        }
+      });
+
+      console.log(`[Backend] Current queue before sort:`, JSON.stringify(queue.map(t => ({id: t.id, votes: t.votes.size})))); // <-- DEBUG LOG
+
+      // Find the track with the most votes
+      const topTrack = [...queue].sort((a, b) => b.votes.size - a.votes.size)[0];
+      console.log(`[Backend] Top voted track: ${topTrack.id} with ${topTrack.votes.size} votes.`); // <-- DEBUG LOG
+      
+      // Now, play this track 
+      rooms[roomId].currentVideoId = topTrack.id;
+      rooms[roomId].playbackState = 'PLAYING';
+      rooms[roomId].lastSeekTime = 0;
+
+      // Remove it from the queue
+      rooms[roomId].queue = queue.filter(v => v.id !== topTrack.id);
+
+      // Send the new video and the updated queue
+      const queueWithVoteCounts = rooms[roomId].queue.map(item => ({
+        ...item,
+        votes: item.votes ? item.votes.size : 0, // Safety check
+      }));
+
+      console.log(`[Backend] Emitting set-video for top voted: ${topTrack.id}`); // <-- DEBUG LOG
+      io.to(roomId).emit('set-video', { 
+        videoId: topTrack.id, 
+        queue: queueWithVoteCounts 
+      });
     });
 
   // ... (All other events like 'host-change-video', 'suggest-track', etc. are UNCHANGED) ...
