@@ -28,6 +28,7 @@ const PORT = process.env.PORT || 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 app.use(cors({ origin: FRONTEND_URL }));
+app.use(express.json());
 
 // --- API Search Endpoint (Unchanged) ---
 app.get('/api/search', async (req, res) => {
@@ -51,6 +52,31 @@ app.get('/api/search', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch search results' });
   }
 });
+
+// ... (Search endpoint ke baad) ...
+
+// --- NEW FEEDBACK ENDPOINT ---
+app.post('/api/feedback', (req, res) => {
+  // Get data sent from frontend
+  const { message, user, roomId } = req.body;
+
+  // Basic validation
+  if (!message || !user || !roomId) {
+    return res.status(400).json({ success: false, message: 'Missing data.' });
+  }
+
+  // **IMPORTANT:** Abhi hum bas console par log kar rahe hain.
+  // Real app mein, aap isse database mein save karोगे ya email bhejoge.
+  console.log('--- FEEDBACK RECEIVED ---');
+  console.log(`Room ID: ${roomId}`);
+  console.log(`User: ${user.displayName} (${user.uid})`);
+  console.log(`Message: ${message}`);
+  console.log('-------------------------');
+
+  // Frontend ko success message bhejo
+  res.status(200).json({ success: true, message: 'Feedback received!' });
+});
+// --- END FEEDBACK ENDPOINT ---
 
 // --- SOCKET.IO LOGIC ---
 const io = new Server(server, {
