@@ -56,7 +56,7 @@ app.get('/api/search', async (req, res) => {
 // ... (Search endpoint ke baad) ...
 
 // --- NEW FEEDBACK ENDPOINT ---
-app.post('/api/feedback', (req, res) => {
+app.post('/api/feedback', async (req, res) => {
   // Get data sent from frontend
   const { message, user, roomId } = req.body;
 
@@ -65,16 +65,25 @@ app.post('/api/feedback', (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing data.' });
   }
 
-  // **IMPORTANT:** Abhi hum bas console par log kar rahe hain.
-  // Real app mein, aap isse database mein save karोगे ya email bhejoge.
-  console.log('--- FEEDBACK RECEIVED ---');
-  console.log(`Room ID: ${roomId}`);
-  console.log(`User: ${user.displayName} (${user.uid})`);
-  console.log(`Message: ${message}`);
-  console.log('-------------------------');
+  // --- SAVE TO FIRESTORE ---
+      try {
+        const feedbackData = {
+          message: message,
+          roomId: roomId,
+          userId: user.uid,
+          userName: user.displayName,
+          timestamp: new Date() 
+        };
+        // Create a new 'feedback' collection and add the data
+        const feedbackRef = await db.collection('feedback').add(feedbackData);
+        console.log(`Feedback saved with ID: ${feedbackRef.id}`); // Log success to server console
 
-  // Frontend ko success message bhejo
-  res.status(200).json({ success: true, message: 'Feedback received!' });
+        res.status(200).json({ success: true, message: 'Feedback received, thank you!' });
+
+      } catch (error) {
+        console.error("Error saving feedback:", error);
+        res.status(500).json({ success: false, message: 'Failed to save feedback.' });
+      }
 });
 // --- END FEEDBACK ENDPOINT ---
 
