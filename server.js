@@ -108,54 +108,48 @@ io.on('connection', (socket) => {
   });
 
   // --- MODIFIED join-room ---
-  socket.on('join-room', async ({ roomId, user }, callback) => {
-    if (!rooms[roomId]) {
-      return callback({ success: false, message: 'Room not found' });
-    }
-    if (rooms[roomId].guests.length >= rooms[roomId].maxGuests) {
-      return callback({ success: false, message: 'This room is full.' });
-    }
+  socket.on('join-room', async ({ roomId, user, guestName }, callback) => { // <-- guestName add kiya
+    if (!rooms[roomId]) { /* ... */ }
+    if (rooms[roomId].guests.length >= rooms[roomId].maxGuests) { /* ... */ }
+
+    const displayName = guestName || user?.displayName || 'Guest'; // <-- Sahi naam set kiya
 
     socket.join(roomId);
-    rooms[roomId].guests.push({ id: socket.id, username: user.displayName });
+    rooms[roomId].guests.push({ id: socket.id, username: displayName }); // <-- Sahi naam save kiya
 
-    // --- NEW: Fetch chat history from Firestore ---
+    // ... (fetch chat same)
     let chatHistory = [];
     try {
-      const chatRef = db.collection('rooms').doc(roomId).collection('chat');
-      const chatSnapshot = await chatRef.orderBy('timestamp', 'asc').get();
-      chatSnapshot.forEach(doc => {
-        chatHistory.push({ id: doc.id, ...doc.data() });
-      });
-    } catch (error) {
-      console.error("Error fetching chat history:", error);
-    }
-    // ---
-
-    // Convert Set to vote counts
+        const chatRef = db.collection('rooms').doc(roomId).collection('chat');
+        const chatSnapshot = await chatRef.orderBy('timestamp', 'asc').get();
+        chatSnapshot.forEach(doc => {
+            chatHistory.push({ id: doc.id, ...doc.data() });
+        });
+    } catch (error) { console.error("Error fetching chat history:", error); }
+    
+    // ... (queue conversion same)
     const queueWithVoteCounts = rooms[roomId].queue.map(item => ({
-      ...item,
-      votes: item.votes ? item.votes.size : 0, // <-- Safety check add kiya
+        ...item,
+        votes: item.votes ? item.votes.size : 0, 
     }));
 
     socket.emit('room-state', {
         ...rooms[roomId],
         queue: queueWithVoteCounts,
-        chat: chatHistory, // Send persistent chat history
+        chat: chatHistory, 
     });
 
-    const joinMsg = {
-      id: uuidv4(),
-      user: 'System',
-      text: `${user.displayName || 'Guest'} has joined the party!`,
-      timestamp: new Date()
+    const joinMsg = { 
+        id: uuidv4(), 
+        user: 'System', 
+        text: `${displayName} has joined the party!`, // <-- Sahi naam use kiya
+        timestamp: new Date() 
     };
-    // Also save join messages to DB
     await db.collection('rooms').doc(roomId).collection('chat').add(joinMsg);
-
+    
     io.to(roomId).emit('new-message', joinMsg);
-
-    console.log(`User ${socket.id} (${user.displayName}) joined room ${roomId}`);
+    
+    console.log(`User ${socket.id} (${displayName}) joined room ${roomId}`); // <-- Sahi naam log kiya
     callback({ success: true });
   });
 
@@ -202,10 +196,13 @@ io.on('connection', (socket) => {
   // --- MODIFIED send-message ---
   socket.on('send-message', async ({ roomId, message, user }) => {
     if (rooms[roomId]) {
+      const displayName = guestName || user?.displayName || 'Guest'; // Naam set karo
+
       const msg = {
         id: uuidv4(),
-        user: user.displayName || 'Guest',
-        uid: user.uid, // Store user ID
+        user: displayName, // Sahi naam use karo
+        // uid sirf logged-in user ke liye save karo
+        ...(user && { uid: user.uid }), 
         text: message,
         timestamp: new Date()
       };
@@ -258,7 +255,7 @@ io.on('connection', (socket) => {
       const suggestion = { 
         id: videoId, 
         title: title || videoId,
-        suggestedBy: socket.id === rooms[roomId].hostId ? 'Host' : rooms[roomId].guests.find(g => g.id === socket.id)?.username || 'Guest',
+        suggestedBy: rooms[roomId].guests.find(g => g.id === socket.id)?.username || 'Unknown', // Ab guests array mein hamesha naam hoga
         votes: new Set(), // Initialize votes Set
       };
 
@@ -383,7 +380,7 @@ io.on('connection', (socket) => {
           const leaveMsg = {
             id: uuidv4(),
             user: 'System',
-            text: `${guest.username || 'Guest'} has left the party.`,
+            text: `${guest.username || 'Someone'} has left the party.`,
             timestamp: new Date()
           };
           // Also save leave messages
