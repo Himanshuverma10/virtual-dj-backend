@@ -56,34 +56,34 @@ app.get('/api/search', async (req, res) => {
 // ... (Search endpoint ke baad) ...
 
 // --- NEW FEEDBACK ENDPOINT ---
-app.post('/api/feedback', async (req, res) => {
-  // Get data sent from frontend
-  const { message, user, roomId } = req.body;
+app.post('/api/feedback', async (req, res) => { 
+  // Ab user aur guestName dono lo
+  const { message, user, guestName, roomId } = req.body; 
 
-  // Basic validation
-  if (!message || !user || !roomId) {
+  // Check karo ki message, roomID, aur user YA guestName mein se ek ho
+  if (!message || !roomId || (!user && !guestName)) { 
     return res.status(400).json({ success: false, message: 'Missing data.' });
   }
 
-  // --- SAVE TO FIRESTORE ---
-      try {
-        const feedbackData = {
-          message: message,
-          roomId: roomId,
-          userId: user.uid,
-          userName: user.displayName,
-          timestamp: new Date() 
-        };
-        // Create a new 'feedback' collection and add the data
-        const feedbackRef = await db.collection('feedback').add(feedbackData);
-        console.log(`Feedback saved with ID: ${feedbackRef.id}`); // Log success to server console
+  try {
+    const feedbackData = {
+      message: message,
+      roomId: roomId,
+      // Agar user hai toh uska data, nahi toh guest ka naam, nahi toh 'Anonymous'
+      userId: user ? user.uid : 'guest', 
+      userName: guestName || user?.displayName || 'Anonymous Guest', 
+      timestamp: new Date() 
+    };
 
-        res.status(200).json({ success: true, message: 'Feedback received, thank you!' });
+    const feedbackRef = await db.collection('feedback').add(feedbackData);
+    console.log(`Feedback saved with ID: ${feedbackRef.id} from ${feedbackData.userName}`); 
 
-      } catch (error) {
-        console.error("Error saving feedback:", error);
-        res.status(500).json({ success: false, message: 'Failed to save feedback.' });
-      }
+    res.status(200).json({ success: true, message: 'Feedback received, thank you!' });
+
+  } catch (error) {
+    console.error("Error saving feedback:", error);
+    res.status(500).json({ success: false, message: 'Failed to save feedback.' });
+  }
 });
 // --- END FEEDBACK ENDPOINT ---
 
